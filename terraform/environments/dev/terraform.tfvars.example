@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars and fill in your own values.
+# terraform.tfvars is gitignored — never commit real values.
+
+aws_region   = "eu-west-1"
+project_name = "devops-takehome"
+environment  = "dev"
+azs          = ["eu-west-1a", "eu-west-1b"]
+
+github_repo = "your-github-username/your-repo-name"
+alarm_email = "you@example.com"

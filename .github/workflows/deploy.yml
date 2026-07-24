@@ -1,0 +1,177 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/backend/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: {}
+
+# Required for OIDC: GitHub mints a short-lived OIDC token for this job,
+# which the aws-actions/configure-aws-credentials step exchanges for
+# temporary AWS credentials by assuming the role created in the iam module.
+# No AWS access key/secret is ever stored as a GitHub secret.
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
+  LAUNCH_TEMPLATE_ID: ${{ vars.LAUNCH_TEMPLATE_ID }}
+  ASG_NAME: ${{ vars.ASG_NAME }}
+
+jobs:
+  # ===========================================================================
+  # Build & Test
+  # ===========================================================================
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest -v
+
+  # ===========================================================================
+  # Build Docker image, tag with latest + Git SHA, push to ECR
+  # ===========================================================================
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.vars.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assume deploy role via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        id: vars
+        run: echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        working-directory: app/backend
+        run: |
+          docker build \
+            -t "${ECR_REPOSITORY_URL}:${{ steps.vars.outputs.image_tag }}" \
+            -t "${ECR_REPOSITORY_URL}:latest" \
+            .
+
+      - name: Push image (SHA + latest)
+        run: |
+          docker push "${ECR_REPOSITORY_URL}:${{ steps.vars.outputs.image_tag }}"
+          docker push "${ECR_REPOSITORY_URL}:latest"
+
+  # ===========================================================================
+  # Ship it: new Launch Template version pointing at the new image tag,
+  # then a rolling ASG Instance Refresh. No SSH, no manual steps.
+  # ===========================================================================
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+    steps:
+      - name: Assume deploy role via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build new user-data with the new image tag
+        run: |
+          set -euo pipefail
+
+          # Pull the currently-active user-data script so we only change the
+          # image tag it references, not anything else about the instance.
+          aws ec2 describe-launch-template-versions \
+            --launch-template-id "$LAUNCH_TEMPLATE_ID" \
+            --versions '$Latest' \
+            --query 'LaunchTemplateVersions[0].LaunchTemplateData.UserData' \
+            --output text | base64 -d > current_user_data.sh
+
+          # The script always references "${ECR_REPOSITORY_URL}:<tag>" for both
+          # the docker pull and docker run lines — swap the tag in both places.
+          sed "s|${ECR_REPOSITORY_URL}:[A-Za-z0-9._-]*|${ECR_REPOSITORY_URL}:${IMAGE_TAG}|g" \
+            current_user_data.sh > new_user_data.sh
+
+          diff current_user_data.sh new_user_data.sh || true
+
+      - name: Create new Launch Template version
+        run: |
+          set -euo pipefail
+          ENCODED_USER_DATA=$(base64 -w0 new_user_data.sh)
+
+          aws ec2 create-launch-template-version \
+            --launch-template-id "$LAUNCH_TEMPLATE_ID" \
+            --source-version '$Latest' \
+            --launch-template-data "{\"UserData\":\"${ENCODED_USER_DATA}\"}" \
+            --query 'LaunchTemplateVersion.VersionNumber' \
+            --output text > new_version.txt
+
+          echo "Created Launch Template version $(cat new_version.txt)"
+
+      - name: Point the ASG at the new Launch Template version
+        run: |
+          set -euo pipefail
+          NEW_VERSION=$(cat new_version.txt)
+
+          aws autoscaling update-auto-scaling-group \
+            --auto-scaling-group-name "$ASG_NAME" \
+            --launch-template "LaunchTemplateId=${LAUNCH_TEMPLATE_ID},Version=${NEW_VERSION}"
+
+      - name: Trigger rolling Instance Refresh
+        run: |
+          set -euo pipefail
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name "$ASG_NAME" \
+            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 60}' \
+            --query 'InstanceRefreshId' \
+            --output text > refresh_id.txt
+
+          echo "Started instance refresh $(cat refresh_id.txt)"
+
+      - name: Wait for Instance Refresh to complete
+        run: |
+          set -euo pipefail
+          REFRESH_ID=$(cat refresh_id.txt)
+
+          for i in $(seq 1 30); do
+            STATUS=$(aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name "$ASG_NAME" \
+              --instance-refresh-ids "$REFRESH_ID" \
+              --query 'InstanceRefreshes[0].Status' \
+              --output text)
+
+            echo "Instance refresh status: $STATUS"
+
+            case "$STATUS" in
+              Successful) exit 0 ;;
+              Failed|Cancelled|RollbackFailed|RollbackSuccessful) exit 1 ;;
+            esac
+
+            sleep 30
+          done
+
+          echo "Timed out waiting for instance refresh to finish (still in progress — check the AWS console)"
+          exit 1
