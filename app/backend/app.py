@@ -107,3 +107,4 @@ def index():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+# Deployed via CI/CD 2026-07-25T00:38:24Z
