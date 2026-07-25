@@ -2,16 +2,14 @@
 
 # devops-takehome
 
-**A production-shaped 3-tier web application on AWS, provisioned with Terraform, containerized with Docker, and shipped through a zero-downtime GitHub Actions pipeline.**
+**A production-shaped 3-tier web application on AWS — provisioned with Terraform, containerized with Docker, and shipped through a zero-downtime GitHub Actions pipeline.**
 
 [![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.7-844FBA?logo=terraform&logoColor=white)](https://www.terraform.io/)
 [![AWS](https://img.shields.io/badge/AWS-eu--west--1-FF9900?logo=amazonaws&logoColor=white)](https://aws.amazon.com/)
 [![Docker](https://img.shields.io/badge/Docker-multi--stage-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
-[![License](https://img.shields.io/badge/license-MIT-informational)](#)
-
-[Architecture](#architecture) · [CI/CD](#cicd-pipeline) · [Security](#security) · [Monitoring](#monitoring) · [Deploy](#deployment)
+[![License: MIT](https://img.shields.io/badge/license-MIT-informational)](LICENSE)
 
 </div>
 
@@ -21,11 +19,39 @@
 
 <br>
 
+## Table of Contents
+
+- [Project Highlights](#project-highlights)
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Repository Structure](#repository-structure)
+- [CI/CD Pipeline](#cicd-pipeline)
+- [Security](#security)
+- [Monitoring](#monitoring)
+- [Deployment](#deployment)
+- [Cost Optimization](#cost-optimization)
+- [Assumptions & Limitations](#assumptions--limitations)
+- [Troubleshooting](#troubleshooting)
+- [Lessons Learned](#lessons-learned)
+- [Future Improvements](#future-improvements)
+
+---
+
+## Project Highlights
+
+- Provisioned a real, working AWS environment — VPC, ALB, Auto Scaling Group, RDS PostgreSQL, ECR, CloudFront, S3, IAM, CloudWatch, SNS — with a verified end-to-end health check chain (`/health` and `/ready` both returning `200` through the full stack)
+- Built a GitHub Actions pipeline that authenticates to AWS via **OIDC federation** — zero long-lived credentials stored anywhere — verified with a fully green run (test → build → push → deploy)
+- Applied **least-privilege IAM** throughout: two purpose-built roles, zero wildcard `*:*` policies
+- Diagnosed and fixed **8 real production issues** that only surface once you actually run `terraform apply` against live AWS — documented in [Troubleshooting](#troubleshooting), not glossed over
+- **Technologies used:** Terraform · AWS (VPC, EC2 Auto Scaling, ALB, RDS, ECR, S3, CloudFront, IAM, CloudWatch, SNS, SSM, Secrets Manager) · Docker · Python / Flask · GitHub Actions · OIDC · Gunicorn · pytest
+
+---
+
 ## Overview
 
-A Flask backend, PostgreSQL database, and static frontend, running on AWS behind an Application Load Balancer and CloudFront — provisioned entirely through modular Terraform and shipped by a GitHub Actions pipeline that authenticates to AWS with no stored credentials at all.
+A Flask backend, PostgreSQL database, and static frontend, running on AWS behind an Application Load Balancer and CloudFront — provisioned entirely through modular Terraform and shipped by a pipeline that never stores an AWS credential.
 
-Built as a Cloud/DevOps Engineer take-home assessment, scoped for a 4–6 hour build. Every decision below is one that would hold up outside the assessment too: least-privilege IAM, no SSH surface, encrypted storage end to end, and a rolling deployment strategy that never takes the app offline.
+Built as a Cloud/DevOps Engineer take-home assessment, scoped for a 4–6 hour build. Every decision here is one that would hold up outside the assessment too.
 
 | | |
 |---|---|
@@ -33,8 +59,8 @@ Built as a Cloud/DevOps Engineer take-home assessment, scoped for a 4–6 hour b
 | **Container registry** | Amazon ECR, image-scanned on push |
 | **Database** | RDS PostgreSQL, credentials generated and held by Secrets Manager |
 | **Frontend delivery** | Private S3 + CloudFront with Origin Access Control |
-| **Access model** | SSM Session Manager only — no SSH, no port 22, anywhere |
-| **CI/CD auth** | GitHub OIDC → short-lived AWS credentials, zero stored keys |
+| **Access model** | SSM Session Manager only |
+| **CI/CD auth** | GitHub OIDC → short-lived AWS credentials |
 | **Observability** | CloudWatch Logs, 3 metric alarms, SNS email notifications |
 
 ---
@@ -82,9 +108,9 @@ flowchart TB
 <summary><b>Why it's shaped this way</b></summary>
 <br>
 
-- **EC2 and RDS sit in private subnets**, reachable only through the ALB — nothing in the compute or data tier has a public IP.
-- **A single NAT Gateway** handles all outbound traffic from private subnets — a deliberate cost trade-off for this environment (see [Cost Optimization](#cost-optimization)).
-- **The app resolves DB connection info at runtime** via SSM Parameter Store, not through baked-in Launch Template values — this keeps the Launch Template static and avoids a circular Terraform dependency between the `compute` and `database` modules.
+- EC2 and RDS sit in private subnets, reachable only through the ALB — nothing in the compute or data tier has a public IP.
+- A single NAT Gateway handles outbound traffic from private subnets — a deliberate cost trade-off (see [Cost Optimization](#cost-optimization)).
+- The app resolves DB connection info at runtime via SSM Parameter Store rather than baked-in Launch Template values, which keeps the template static and avoids a circular Terraform dependency between the `compute` and `database` modules.
 
 </details>
 
@@ -107,9 +133,10 @@ terraform/
 app/backend/             Flask app, Dockerfile, tests
 .github/workflows/       deploy.yml — build, test, ship
 docs/images/              Diagrams and illustrative mockups used in this README
+LICENSE                  MIT
 ```
 
-Each module owns exactly one AWS concern and exposes only what the next module needs — `networking` never knows compute exists; `iam` only knows the one ECR ARN it needs to scope permissions to. The root module is the single place anything gets wired together, keeping every module independently reusable.
+Each module owns exactly one AWS concern and exposes only what the next module needs — `networking` never knows compute exists; `iam` only knows the one ECR ARN it needs to scope permissions to. The root module is the single place anything gets wired together.
 
 ---
 
@@ -133,7 +160,7 @@ sequenceDiagram
     ASG-->>GH: refresh status polled until Successful
 ```
 
-**No AWS credential is ever stored in this repository or in GitHub Secrets.** `permissions: id-token: write` lets GitHub mint a short-lived OIDC token for each run, which `aws-actions/configure-aws-credentials` exchanges for temporary AWS credentials by assuming a role whose trust policy is scoped to this exact repository and the `main` branch — a fork or a PR branch cannot assume it.
+`permissions: id-token: write` lets GitHub mint a short-lived OIDC token for each run, which `aws-actions/configure-aws-credentials` exchanges for temporary AWS credentials by assuming a role scoped to this exact repository and the `main` branch — a fork or PR branch cannot assume it, and nothing is ever stored in GitHub Secrets.
 
 ---
 
@@ -144,9 +171,9 @@ sequenceDiagram
 | Instance access | SSM Session Manager only — no SSH, no port 22, no key pairs |
 | Network segmentation | EC2 and RDS in private subnets, no public IPs |
 | Security group chain | Internet → ALB → EC2 → RDS, one hop and one port at a time |
-| IAM | Two purpose-built roles, both least-privilege, zero wildcard `*:*` policies |
+| IAM | Two purpose-built roles, least-privilege, zero wildcard `*:*` policies |
 | Encryption at rest | RDS storage, EBS root volume, S3 frontend bucket |
-| Frontend access | S3 is fully private; CloudFront reaches it via Origin Access Control |
+| Frontend access | S3 fully private; CloudFront reaches it via Origin Access Control |
 | Secrets | RDS master password generated and held entirely by Secrets Manager — Terraform state never contains it |
 
 ---
@@ -155,11 +182,7 @@ sequenceDiagram
 
 <img src="docs/images/cloudwatch-dashboard-mockup.svg" alt="CloudWatch dashboard mockup showing three alarms in OK state, a CPU utilization chart, a request count chart, and a live application log stream" width="100%">
 
-CloudWatch Agent ships application logs and `mem`/`disk` metrics from every instance. Three alarms, all notifying a single SNS topic by email:
-
-- **Unhealthy target count** on the ALB target group
-- **High CPU** across the Auto Scaling Group
-- **Elevated 5xx rate** at the load balancer
+CloudWatch Agent ships application logs and `mem`/`disk` metrics from every instance. Three alarms, all notifying a single SNS topic by email: unhealthy target count on the ALB target group, high CPU across the Auto Scaling Group, and elevated 5xx rate at the load balancer.
 
 ---
 
@@ -217,7 +240,7 @@ Repo → **Settings → Secrets and variables → Actions → Variables** (resou
 <summary><b>4. Ship a change</b></summary>
 <br>
 
-Push to `main` touching anything under `app/backend/` — the pipeline builds, tests, pushes an image tagged with the Git SHA, cuts a new Launch Template version, and rolls the Auto Scaling Group through an Instance Refresh with zero downtime.
+Push to `main` touching `app/backend/` — the pipeline builds, tests, pushes an image tagged with the Git SHA, cuts a new Launch Template version, and rolls the ASG through a zero-downtime Instance Refresh.
 
 ```bash
 terraform output alb_dns_name   # curl this + /health to verify
@@ -235,11 +258,11 @@ terraform destroy
 
 </details>
 
-### Health check proof
+**Health check proof:**
 
 <img src="docs/images/alb-health-check-mockup.svg" alt="Illustrative ALB target group health check mockup — two targets healthy, /health and /ready both returning 200" width="100%">
 
-### Run locally
+**Run locally:**
 
 ```bash
 cd app/backend
@@ -264,19 +287,58 @@ curl http://localhost:5000/health
 | Single NAT Gateway | One NAT Gateway per AZ (~2× cost, removes single point of failure) |
 | Single-AZ RDS (`multi_az = false`) | `multi_az = true` for automatic failover |
 | `db.t3.micro` | Sized to actual load, with RDS Proxy if connection counts grow |
-| ECR lifecycle policy caps stored images at 10 | Unchanged — already production-appropriate |
+| ECR lifecycle policy caps stored images at 10 | Already production-appropriate |
 | CloudFront `PriceClass_100` | `PriceClass_All` once traffic isn't regionally concentrated |
 | Local Terraform state | S3 + DynamoDB remote backend for team use and CI locking |
 
 ---
 
+## Assumptions & Limitations
+
+**Assumptions:**
+- An AWS account/sandbox with sufficient service quotas in the target region
+- A GitHub repository already exists to receive the OIDC trust relationship
+- Terraform ≥ 1.7 and AWS CLI configured locally for the initial provisioning steps
+
+**Limitations:**
+- Frontend CI/CD isn't wired up — the `frontend` module provisions S3 + CloudFront, but syncing built assets and invalidating the cache is still a manual step
+- Single NAT Gateway and single-AZ RDS are cost-optimized, not HA-ready, out of the box
+- No custom domain or ACM certificate — the ALB listener serves plain HTTP
+- Local Terraform state is fine for solo use, not safe for concurrent or team applies
+- Unit tests only — no integration test against a live Postgres instance
+
+---
+
+## Troubleshooting
+
+Real issues hit and fixed while actually running `terraform apply` and the CI/CD pipeline against live AWS — not hypothetical:
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| `InvalidParameterValue: Character sets beyond ASCII are not supported` creating security groups | SG `description` fields only accept ASCII | Replaced em dashes with plain hyphens |
+| `InvalidParameterCombination: Cannot find version X for postgres` | Hardcoded RDS engine version not available in this region/account | Auto-discover via `data "aws_rds_engine_version"` instead of pinning a version |
+| SSM Session Manager never connects (`TargetNotConnected`) | `amazon-ssm-agent` isn't pre-installed on this AMI build | `dnf install -y amazon-ssm-agent` before enabling the service |
+| `/ready` returns `db_config_unavailable` | IMDSv2 `http_put_response_hop_limit = 1` blocks containerized processes from reaching instance metadata | Set `http_put_response_hop_limit = 2` |
+| CloudWatch Logs empty despite the app running fine | App logs to stdout; CloudWatch Agent was configured to tail a file the app never writes | Ship container stdout via Docker's `awslogs` log driver instead |
+| ECR push fails: `tag ... is immutable` | Repository was `IMMUTABLE`, but the pipeline intentionally overwrites the `latest` tag every deploy | Switched to `image_tag_mutability = "MUTABLE"` |
+| GitHub Actions OIDC `AccessDenied` on a brand-new repo | GitHub's July 2026 rollout of immutable OIDC subject claims (`repo:owner@id/repo@id:...`) | Trust policy matches both the legacy and immutable claim formats via `StringLike` |
+| `AccessDenied ... not authorized to use launch template` | Associating a Launch Template with an ASG needs `ec2:RunInstances`, `ec2:CreateTags`, and `iam:PassRole` in addition to the Auto Scaling permissions | Added all three to the CI/CD role |
+
+---
+
+## Lessons Learned
+
+`terraform validate` and `terraform plan` catch syntax and type errors — they don't catch region-specific engine versions, AMI package availability, IMDS hop-limit behavior inside containers, or a platform vendor shipping a breaking change to its OIDC token format the same week you build against it. Every issue in the table above only surfaced once the infrastructure was actually applied and the pipeline actually ran end to end. Building the fix into the Terraform source rather than working around it by hand is what makes the pipeline trustworthy for the next deploy, not just the first one.
+
+---
+
 ## Future Improvements
 
-- **Blue/green or canary deploys** in place of the current rolling Instance Refresh
-- **ACM certificate + Route 53 domain**, redirecting the ALB's HTTP listener to HTTPS
-- **Frontend CI/CD**: `aws s3 sync` + CloudFront invalidation isn't wired into the pipeline yet — the `frontend` module provisions the infrastructure, but shipping builds to it is still manual
-- **Target-tracking scaling policy** (CPU or ALB request count per target) instead of the current static `min=1 / max=2` sizing
-- **Integration tests** against a real Postgres instance, beyond the current unit tests on the Flask routes
+- Blue/green or canary deploys in place of the current rolling Instance Refresh
+- ACM certificate + Route 53 domain, redirecting the ALB's HTTP listener to HTTPS
+- Wire the frontend build into CI/CD (`aws s3 sync` + CloudFront invalidation)
+- Target-tracking scaling policy instead of the current static `min=1 / max=2` sizing
+- Integration tests against a real Postgres instance
 
 ---
 

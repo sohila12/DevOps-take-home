@@ -1,9 +1,9 @@
 locals {
-  name_prefix         = "${var.project_name}-${var.environment}"
-  app_container_name  = "app"
-  log_group_name      = "/${var.project_name}/${var.environment}/app"
-  ssm_param_prefix    = "/${var.project_name}/${var.environment}/db"
-  ecr_registry        = split("/", var.ecr_repository_url)[0]
+  name_prefix        = "${var.project_name}-${var.environment}"
+  app_container_name = "app"
+  log_group_name     = "/${var.project_name}/${var.environment}/app"
+  ssm_param_prefix   = "/${var.project_name}/${var.environment}/db"
+  ecr_registry       = split("/", var.ecr_repository_url)[0]
 }
 
 data "aws_region" "current" {}
@@ -88,7 +88,7 @@ resource "aws_security_group_rule" "ec2_ingress_from_alb" {
   protocol                 = "tcp"
   security_group_id        = aws_security_group.ec2.id
   source_security_group_id = aws_security_group.alb.id
-  description               = "App port from ALB only"
+  description              = "App port from ALB only"
 }
 
 resource "aws_security_group_rule" "ec2_egress_all" {
@@ -135,8 +135,8 @@ resource "aws_lb_target_group" "app" {
 
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
-  port               = 80
-  protocol           = "HTTP"
+  port              = 80
+  protocol          = "HTTP"
 
   default_action {
     type             = "forward"
@@ -163,7 +163,7 @@ resource "aws_launch_template" "app" {
   vpc_security_group_ids = [aws_security_group.ec2.id]
 
   metadata_options {
-    http_tokens                = "required" # IMDSv2 only
+    http_tokens                 = "required" # IMDSv2 only
     http_put_response_hop_limit = 2
   }
 
@@ -171,9 +171,9 @@ resource "aws_launch_template" "app" {
     device_name = "/dev/xvda"
     ebs {
       volume_size           = 20
-      volume_type            = "gp3"
-      encrypted              = true
-      delete_on_termination  = true
+      volume_type           = "gp3"
+      encrypted             = true
+      delete_on_termination = true
     }
   }
 
@@ -183,9 +183,9 @@ resource "aws_launch_template" "app" {
     ecr_repository_url = var.ecr_repository_url
     image_tag          = var.image_tag
     app_container_name = local.app_container_name
-    app_port            = var.app_port
-    log_group_name      = local.log_group_name
-    ssm_param_prefix    = local.ssm_param_prefix
+    app_port           = var.app_port
+    log_group_name     = local.log_group_name
+    ssm_param_prefix   = local.ssm_param_prefix
   }))
 
   tag_specifications {

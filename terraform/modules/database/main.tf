@@ -48,7 +48,7 @@ resource "aws_security_group_rule" "rds_ingress_from_ec2" {
   protocol                 = "tcp"
   security_group_id        = aws_security_group.rds.id
   source_security_group_id = var.ec2_security_group_id
-  description               = "Postgres from EC2 app instances"
+  description              = "Postgres from EC2 app instances"
 }
 
 resource "aws_security_group_rule" "rds_egress_all" {
@@ -75,9 +75,9 @@ resource "aws_db_instance" "main" {
   engine_version = coalesce(var.engine_version, data.aws_rds_engine_version.postgres.version)
   instance_class = var.instance_class
 
-  allocated_storage     = var.allocated_storage
-  storage_type           = "gp3"
-  storage_encrypted      = true
+  allocated_storage = var.allocated_storage
+  storage_type      = "gp3"
+  storage_encrypted = true
 
   db_name  = var.db_name
   username = var.db_username

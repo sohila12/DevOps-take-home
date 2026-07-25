@@ -1,7 +1,7 @@
 locals {
-  name_prefix   = "${var.project_name}-${var.environment}"
-  github_owner  = split("/", var.github_repo)[0]
-  github_repo   = split("/", var.github_repo)[1]
+  name_prefix  = "${var.project_name}-${var.environment}"
+  github_owner = split("/", var.github_repo)[0]
+  github_repo  = split("/", var.github_repo)[1]
 }
 
 # =============================================================================
