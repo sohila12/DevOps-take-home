@@ -1,0 +1,117 @@
+<svg viewBox="0 0 1200 620" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <filter id="shadow3" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="3" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="620" fill="#f1f5f9"/>
+
+  <!-- Top bar -->
+  <rect x="0" y="0" width="1200" height="56" fill="#0f172a"/>
+  <circle cx="28" cy="28" r="4" fill="#ef4444"/>
+  <circle cx="44" cy="28" r="4" fill="#f59e0b"/>
+  <circle cx="60" cy="28" r="4" fill="#22c55e"/>
+  <text x="90" y="33" font-size="14" font-weight="600" fill="#e2e8f0">Resource Overview — devops-takehome-dev</text>
+  <text x="1160" y="33" font-size="11" fill="#94a3b8" text-anchor="end">eu-west-1</text>
+
+  <!-- Illustrative badge -->
+  <rect x="900" y="66" width="260" height="24" rx="12" fill="#fef3c7" stroke="#fcd34d"/>
+  <text x="1030" y="82" text-anchor="middle" font-size="10.5" font-weight="600" fill="#92400e">ILLUSTRATIVE MOCKUP — NOT A SCREENSHOT</text>
+
+  <!-- Cards grid: 4 columns x 2 rows -->
+  <!-- Card template repeated -->
+
+  <!-- VPC -->
+  <g filter="url(#shadow3)">
+    <rect x="40" y="70" width="260" height="130" rx="10" fill="#ffffff"/>
+  </g>
+  <rect x="40" y="70" width="6" height="130" rx="3" fill="#3b82f6"/>
+  <text x="64" y="98" font-size="13" font-weight="700" fill="#0f172a">VPC</text>
+  <text x="64" y="118" font-size="11" fill="#64748b">10.0.0.0/16</text>
+  <text x="64" y="136" font-size="11" fill="#64748b">4 subnets · 2 AZs</text>
+  <rect x="64" y="152" width="58" height="20" rx="10" fill="#dcfce7"/>
+  <text x="93" y="166" text-anchor="middle" font-size="10" font-weight="600" fill="#15803d">Available</text>
+
+  <!-- ALB -->
+  <g filter="url(#shadow3)">
+    <rect x="320" y="70" width="260" height="130" rx="10" fill="#ffffff"/>
+  </g>
+  <rect x="320" y="70" width="6" height="130" rx="3" fill="#3b82f6"/>
+  <text x="344" y="98" font-size="13" font-weight="700" fill="#0f172a">Application Load Balancer</text>
+  <text x="344" y="118" font-size="11" fill="#64748b">devops-takehome-dev-alb</text>
+  <text x="344" y="136" font-size="11" fill="#64748b">2 targets registered</text>
+  <rect x="344" y="152" width="46" height="20" rx="10" fill="#dcfce7"/>
+  <text x="367" y="166" text-anchor="middle" font-size="10" font-weight="600" fill="#15803d">Active</text>
+
+  <!-- ASG -->
+  <g filter="url(#shadow3)">
+    <rect x="600" y="70" width="260" height="130" rx="10" fill="#ffffff"/>
+  </g>
+  <rect x="600" y="70" width="6" height="130" rx="3" fill="#16a34a"/>
+  <text x="624" y="98" font-size="13" font-weight="700" fill="#0f172a">EC2 Auto Scaling Group</text>
+  <text x="624" y="118" font-size="11" fill="#64748b">min 1 · desired 1 · max 2</text>
+  <text x="624" y="136" font-size="11" fill="#64748b">Amazon Linux 2023</text>
+  <rect x="624" y="152" width="86" height="20" rx="10" fill="#dcfce7"/>
+  <text x="667" y="166" text-anchor="middle" font-size="10" font-weight="600" fill="#15803d">1/1 Healthy</text>
+
+  <!-- RDS -->
+  <g filter="url(#shadow3)">
+    <rect x="880" y="70" width="260" height="130" rx="10" fill="#ffffff"/>
+  </g>
+  <rect x="880" y="70" width="6" height="130" rx="3" fill="#16a34a"/>
+  <text x="904" y="98" font-size="13" font-weight="700" fill="#0f172a">RDS PostgreSQL</text>
+  <text x="904" y="118" font-size="11" fill="#64748b">db.t3.micro</text>
+  <text x="904" y="136" font-size="11" fill="#64748b">Encrypted · private subnet</text>
+  <rect x="904" y="152" width="66" height="20" rx="10" fill="#dcfce7"/>
+  <text x="937" y="166" text-anchor="middle" font-size="10" font-weight="600" fill="#15803d">Available</text>
+
+  <!-- Row 2 -->
+  <!-- ECR -->
+  <g filter="url(#shadow3)">
+    <rect x="40" y="220" width="260" height="130" rx="10" fill="#ffffff"/>
+  </g>
+  <rect x="40" y="220" width="6" height="130" rx="3" fill="#d97706"/>
+  <text x="64" y="248" font-size="13" font-weight="700" fill="#0f172a">ECR Repository</text>
+  <text x="64" y="268" font-size="11" fill="#64748b">devops-takehome-dev-app</text>
+  <text x="64" y="286" font-size="11" fill="#64748b">Scan on push · lifecycle: keep 10</text>
+  <rect x="64" y="302" width="70" height="20" rx="10" fill="#dbeafe"/>
+  <text x="99" y="316" text-anchor="middle" font-size="10" font-weight="600" fill="#1d4ed8">2 tags</text>
+
+  <!-- CloudFront -->
+  <g filter="url(#shadow3)">
+    <rect x="320" y="220" width="260" height="130" rx="10" fill="#ffffff"/>
+  </g>
+  <rect x="320" y="220" width="6" height="130" rx="3" fill="#d97706"/>
+  <text x="344" y="248" font-size="13" font-weight="700" fill="#0f172a">CloudFront</text>
+  <text x="344" y="268" font-size="11" fill="#64748b">PriceClass_100</text>
+  <text x="344" y="286" font-size="11" fill="#64748b">Origin Access Control</text>
+  <rect x="344" y="302" width="58" height="20" rx="10" fill="#dcfce7"/>
+  <text x="373" y="316" text-anchor="middle" font-size="10" font-weight="600" fill="#15803d">Deployed</text>
+
+  <!-- S3 -->
+  <g filter="url(#shadow3)">
+    <rect x="600" y="220" width="260" height="130" rx="10" fill="#ffffff"/>
+  </g>
+  <rect x="600" y="220" width="6" height="130" rx="3" fill="#d97706"/>
+  <text x="624" y="248" font-size="13" font-weight="700" fill="#0f172a">S3 (frontend)</text>
+  <text x="624" y="268" font-size="11" fill="#64748b">Public access: blocked</text>
+  <text x="624" y="286" font-size="11" fill="#64748b">Encrypted · versioned</text>
+  <rect x="624" y="302" width="56" height="20" rx="10" fill="#dcfce7"/>
+  <text x="652" y="316" text-anchor="middle" font-size="10" font-weight="600" fill="#15803d">Private</text>
+
+  <!-- IAM / summary -->
+  <g filter="url(#shadow3)">
+    <rect x="880" y="220" width="260" height="130" rx="10" fill="#ffffff"/>
+  </g>
+  <rect x="880" y="220" width="6" height="130" rx="3" fill="#64748b"/>
+  <text x="904" y="248" font-size="13" font-weight="700" fill="#0f172a">IAM</text>
+  <text x="904" y="268" font-size="11" fill="#64748b">2 roles, 0 wildcard policies</text>
+  <text x="904" y="286" font-size="11" fill="#64748b">OIDC federation for CI/CD</text>
+  <rect x="904" y="302" width="94" height="20" rx="10" fill="#dcfce7"/>
+  <text x="951" y="316" text-anchor="middle" font-size="10" font-weight="600" fill="#15803d">Least privilege</text>
+
+  <!-- Footer strip -->
+  <rect x="40" y="380" width="1100" height="1" fill="#e2e8f0"/>
+  <text x="40" y="410" font-size="11.5" fill="#64748b">7 services shown · all resources tagged Project=devops-takehome, Environment=dev, ManagedBy=terraform</text>
+</svg>

@@ -1,40 +1,40 @@
 <div align="center">
 
-# DevOps Take-Home Assessment
+# devops-takehome
 
-**A production-shaped 3-tier web application on AWS — Terraform, Docker, and GitHub Actions, built module by module.**
+**A production-shaped 3-tier web application on AWS, provisioned with Terraform, containerized with Docker, and shipped through a zero-downtime GitHub Actions pipeline.**
 
 [![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.7-844FBA?logo=terraform&logoColor=white)](https://www.terraform.io/)
-[![AWS](https://img.shields.io/badge/AWS-Provisioned-FF9900?logo=amazonaws&logoColor=white)](https://aws.amazon.com/)
-[![Docker](https://img.shields.io/badge/Docker-Multi--stage-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![AWS](https://img.shields.io/badge/AWS-eu--west--1-FF9900?logo=amazonaws&logoColor=white)](https://aws.amazon.com/)
+[![Docker](https://img.shields.io/badge/Docker-multi--stage-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
 [![License](https://img.shields.io/badge/license-MIT-informational)](#)
 
+[Architecture](#architecture) · [CI/CD](#cicd-pipeline) · [Security](#security) · [Monitoring](#monitoring) · [Deploy](#deployment)
+
 </div>
 
----
+<br>
+
+<img src="docs/images/infrastructure-infographic.svg" alt="Infrastructure overview — six Terraform modules, zero SSH, two least-privilege IAM roles, three CloudWatch alarms" width="100%">
+
+<br>
 
 ## Overview
 
-A Flask backend, PostgreSQL database, and static frontend, deployed on AWS
-behind an Application Load Balancer and CloudFront — provisioned entirely
-through modular Terraform and shipped via a GitHub Actions pipeline that
-authenticates to AWS with no stored credentials.
+A Flask backend, PostgreSQL database, and static frontend, running on AWS behind an Application Load Balancer and CloudFront — provisioned entirely through modular Terraform and shipped by a GitHub Actions pipeline that authenticates to AWS with no stored credentials at all.
 
-This repository is the output of a Cloud/DevOps take-home assessment. It's
-scoped for a 4–6 hour build, but every infrastructure decision below is one
-that would hold up in a real environment: least-privilege IAM, no SSH
-surface, encrypted storage, and a rolling zero-downtime deployment strategy.
+Built as a Cloud/DevOps Engineer take-home assessment, scoped for a 4–6 hour build. Every decision below is one that would hold up outside the assessment too: least-privilege IAM, no SSH surface, encrypted storage end to end, and a rolling deployment strategy that never takes the app offline.
 
 | | |
 |---|---|
 | **Compute** | EC2 (Amazon Linux 2023) in an Auto Scaling Group behind an ALB |
 | **Container registry** | Amazon ECR, image-scanned on push |
-| **Database** | RDS PostgreSQL, RDS-managed credentials via Secrets Manager |
-| **Frontend delivery** | S3 (private) + CloudFront with Origin Access Control |
+| **Database** | RDS PostgreSQL, credentials generated and held by Secrets Manager |
+| **Frontend delivery** | Private S3 + CloudFront with Origin Access Control |
 | **Access model** | SSM Session Manager only — no SSH, no port 22, anywhere |
-| **CI/CD auth** | GitHub OIDC → short-lived AWS role assumption, zero stored keys |
+| **CI/CD auth** | GitHub OIDC → short-lived AWS credentials, zero stored keys |
 | **Observability** | CloudWatch Logs, 3 metric alarms, SNS email notifications |
 
 ---
@@ -76,18 +76,21 @@ flowchart TB
     ASG -- logs/metrics --> CW --> SNS
 ```
 
+<img src="docs/images/architecture-diagram.svg" alt="AWS architecture diagram showing CloudFront, S3, ALB, EC2 Auto Scaling Group, RDS PostgreSQL, ECR, CloudWatch and SNS across public and private subnets" width="100%">
+
 <details>
-<summary><b>Static diagram (SVG, no JS required)</b></summary>
+<summary><b>Why it's shaped this way</b></summary>
 <br>
 
-See [`docs/architecture.svg`](docs/architecture.svg) for a rendered,
-presentation-ready version of the same diagram.
+- **EC2 and RDS sit in private subnets**, reachable only through the ALB — nothing in the compute or data tier has a public IP.
+- **A single NAT Gateway** handles all outbound traffic from private subnets — a deliberate cost trade-off for this environment (see [Cost Optimization](#cost-optimization)).
+- **The app resolves DB connection info at runtime** via SSM Parameter Store, not through baked-in Launch Template values — this keeps the Launch Template static and avoids a circular Terraform dependency between the `compute` and `database` modules.
 
 </details>
 
 ---
 
-## Repository Layout
+## Repository Structure
 
 ```text
 terraform/
@@ -103,45 +106,66 @@ terraform/
 
 app/backend/             Flask app, Dockerfile, tests
 .github/workflows/       deploy.yml — build, test, ship
-docs/                    architecture.svg
+docs/images/              Diagrams and illustrative mockups used in this README
 ```
 
-<details>
-<summary><b>Why modules are structured this way</b></summary>
-<br>
-
-Each module maps to a single AWS concern and exposes only the outputs the
-next module needs — `networking` never knows about compute, `iam` only
-knows about the one ECR ARN it needs to scope permissions to. The root
-module (`environments/dev`) is the only place that wires modules together,
-which keeps every module independently reusable across environments.
-
-</details>
+Each module owns exactly one AWS concern and exposes only what the next module needs — `networking` never knows compute exists; `iam` only knows the one ECR ARN it needs to scope permissions to. The root module is the single place anything gets wired together, keeping every module independently reusable.
 
 ---
 
-## Getting Started
+## CI/CD Pipeline
 
-### Run locally
+<img src="docs/images/cicd-pipeline.svg" alt="CI/CD pipeline: build and test, assume role via OIDC, build image, push to ECR, create new Launch Template version, trigger rolling instance refresh" width="100%">
 
-```bash
-cd app/backend
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements-dev.txt
-pytest -v
-python app.py   # http://localhost:5000
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant GH as GitHub Actions
+    participant ECR as Amazon ECR
+    participant ASG as Auto Scaling Group
+
+    Dev->>GH: git push main (app/backend/**)
+    GH->>GH: Build & Test (pytest)
+    GH->>GH: docker build
+    GH->>ECR: push :sha and :latest
+    GH->>ASG: create new Launch Template version
+    GH->>ASG: start-instance-refresh (rolling, 50% min healthy)
+    ASG-->>GH: refresh status polled until Successful
 ```
 
-### Run in Docker
+**No AWS credential is ever stored in this repository or in GitHub Secrets.** `permissions: id-token: write` lets GitHub mint a short-lived OIDC token for each run, which `aws-actions/configure-aws-credentials` exchanges for temporary AWS credentials by assuming a role whose trust policy is scoped to this exact repository and the `main` branch — a fork or a PR branch cannot assume it.
 
-```bash
-cd app/backend
-docker build -t devops-takehome-app:local .
-docker run --rm -p 5000:5000 devops-takehome-app:local
-curl http://localhost:5000/health
-```
+---
 
-### Deploy to AWS
+## Security
+
+| Control | Implementation |
+|---|---|
+| Instance access | SSM Session Manager only — no SSH, no port 22, no key pairs |
+| Network segmentation | EC2 and RDS in private subnets, no public IPs |
+| Security group chain | Internet → ALB → EC2 → RDS, one hop and one port at a time |
+| IAM | Two purpose-built roles, both least-privilege, zero wildcard `*:*` policies |
+| Encryption at rest | RDS storage, EBS root volume, S3 frontend bucket |
+| Frontend access | S3 is fully private; CloudFront reaches it via Origin Access Control |
+| Secrets | RDS master password generated and held entirely by Secrets Manager — Terraform state never contains it |
+
+---
+
+## Monitoring
+
+<img src="docs/images/cloudwatch-dashboard-mockup.svg" alt="CloudWatch dashboard mockup showing three alarms in OK state, a CPU utilization chart, a request count chart, and a live application log stream" width="100%">
+
+CloudWatch Agent ships application logs and `mem`/`disk` metrics from every instance. Three alarms, all notifying a single SNS topic by email:
+
+- **Unhealthy target count** on the ALB target group
+- **High CPU** across the Auto Scaling Group
+- **Elevated 5xx rate** at the load balancer
+
+---
+
+## Deployment
+
+<img src="docs/images/resource-overview-mockup.svg" alt="Illustrative resource overview mockup showing VPC, ALB, EC2 Auto Scaling Group, RDS PostgreSQL, ECR, CloudFront, S3, and IAM, all in Available or Healthy state" width="100%">
 
 <details open>
 <summary><b>1. Provision the infrastructure</b></summary>
@@ -177,8 +201,7 @@ docker push <ecr_repository_url>:latest
 <summary><b>3. Configure GitHub Actions</b></summary>
 <br>
 
-Repo → **Settings → Secrets and variables → Actions → Variables** (these are
-resource identifiers, not secrets):
+Repo → **Settings → Secrets and variables → Actions → Variables** (resource identifiers, not secrets):
 
 | Variable | Source |
 |---|---|
@@ -194,9 +217,7 @@ resource identifiers, not secrets):
 <summary><b>4. Ship a change</b></summary>
 <br>
 
-Push to `main` touching anything under `app/backend/` — the pipeline builds,
-tests, pushes an image tagged with the Git SHA, cuts a new Launch Template
-version, and rolls the Auto Scaling Group through an Instance Refresh.
+Push to `main` touching anything under `app/backend/` — the pipeline builds, tests, pushes an image tagged with the Git SHA, cuts a new Launch Template version, and rolls the Auto Scaling Group through an Instance Refresh with zero downtime.
 
 ```bash
 terraform output alb_dns_name   # curl this + /health to verify
@@ -212,143 +233,55 @@ terraform output alb_dns_name   # curl this + /health to verify
 terraform destroy
 ```
 
-This is a disposable assessment environment — `skip_final_snapshot = true`
-on RDS, no deletion protection, no remote state lock to worry about.
-
 </details>
 
----
+### Health check proof
 
-## Deployment Flow
+<img src="docs/images/alb-health-check-mockup.svg" alt="Illustrative ALB target group health check mockup — two targets healthy, /health and /ready both returning 200" width="100%">
 
-```mermaid
-sequenceDiagram
-    participant Dev as Developer
-    participant GH as GitHub Actions
-    participant ECR as Amazon ECR
-    participant ASG as Auto Scaling Group
+### Run locally
 
-    Dev->>GH: git push main (app/backend/**)
-    GH->>GH: Build & Test (pytest)
-    GH->>GH: docker build
-    GH->>ECR: push :sha and :latest
-    GH->>ASG: create new Launch Template version
-    GH->>ASG: start-instance-refresh (rolling, 50% min healthy)
-    ASG-->>GH: refresh status polled until Successful
+```bash
+cd app/backend
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements-dev.txt
+pytest -v
+python app.py   # http://localhost:5000
+```
+
+```bash
+docker build -t devops-takehome-app:local app/backend
+docker run --rm -p 5000:5000 devops-takehome-app:local
+curl http://localhost:5000/health
 ```
 
 ---
 
-## How Secrets Are Handled
+## Cost Optimization
 
-No AWS credential is ever stored in this repository or in GitHub Secrets.
-
-- **CI/CD → AWS**: GitHub Actions assumes an IAM role via **OIDC federation**.
-  The trust policy is scoped to this exact repository and the `main` branch —
-  a fork or a PR branch cannot assume it.
-- **App → Database**: the EC2 role reads the DB host/name from **SSM
-  Parameter Store** and the password from **Secrets Manager**, both resolved
-  at container startup. The RDS master password itself is generated and held
-  entirely by AWS (`manage_master_user_password = true`) — Terraform state
-  never contains it.
-
----
-
-## Security Posture
-
-| Control | Implementation |
+| Choice made here | Production alternative |
 |---|---|
-| Instance access | SSM Session Manager only — no SSH, no port 22, no key pairs |
-| Network segmentation | EC2 and RDS in private subnets, no public IPs |
-| Security group chain | Internet → ALB → EC2 → RDS, one hop and one port at a time |
-| IAM | Two purpose-built roles, both least-privilege, zero wildcard `*:*` policies |
-| Encryption at rest | RDS storage, EBS root volume, S3 frontend bucket |
-| Frontend access | S3 is fully private; CloudFront reaches it via Origin Access Control |
+| Single NAT Gateway | One NAT Gateway per AZ (~2× cost, removes single point of failure) |
+| Single-AZ RDS (`multi_az = false`) | `multi_az = true` for automatic failover |
+| `db.t3.micro` | Sized to actual load, with RDS Proxy if connection counts grow |
+| ECR lifecycle policy caps stored images at 10 | Unchanged — already production-appropriate |
+| CloudFront `PriceClass_100` | `PriceClass_All` once traffic isn't regionally concentrated |
+| Local Terraform state | S3 + DynamoDB remote backend for team use and CI locking |
 
 ---
 
-## Monitoring & Alerting
+## Future Improvements
 
-CloudWatch Agent ships application logs and `mem`/`disk` metrics from every
-instance. Three alarms, all notifying a single SNS topic by email:
-
-- **Unhealthy target count** on the ALB target group
-- **High CPU** across the Auto Scaling Group
-- **Elevated 5xx rate** at the load balancer
-
----
-
-## Key Design Decisions
-
-<details>
-<summary><b>Why the app resolves DB config at runtime instead of via user-data</b></summary>
-<br>
-
-Baking the DB host/password into Launch Template user-data would create a
-circular Terraform dependency — `compute` would need `database`'s outputs,
-and `database`'s security group needs `compute`'s EC2 security group ID.
-Instead, the app reads connection info from SSM Parameter Store at startup,
-using only its IAM role's scoped read permissions. This also keeps
-user-data fully static, so shipping a new app version never requires
-re-rendering it.
-
-</details>
-
-<details>
-<summary><b>Why GitHub OIDC instead of access keys</b></summary>
-<br>
-
-Static AWS access keys in GitHub Secrets are long-lived and easy to leak or
-forget to rotate. OIDC federation issues short-lived credentials per
-workflow run, scoped by a trust policy condition to this exact repo and
-branch — nothing to rotate, nothing to leak.
-
-</details>
-
-<details>
-<summary><b>Why the ECR repository lives in the root module</b></summary>
-<br>
-
-Both `iam` (to scope pull/push policies) and `compute` (to reference the
-image URL) need the ECR repository — but neither module should own the
-other's dependency. Creating it once at the root and passing it down avoids
-that ownership conflict entirely.
-
-</details>
-
----
-
-## Trade-offs (Given the Time Limit)
-
-- Unit tests only — no integration test against a live Postgres instance,
-  matching the assessment's explicit "a simple test is sufficient" scope.
-- Rolling Instance Refresh, not blue/green or canary.
-- Plain HTTP on the ALB listener — no ACM certificate or custom domain.
-- The `frontend` module provisions S3 + CloudFront, but syncing built
-  assets and invalidating the cache isn't wired into CI yet.
-- Single NAT Gateway and single-AZ RDS — both a one-variable flip away from
-  the production configuration (see below).
-
-## Production Considerations
-
-**Scale.** Attach a target-tracking scaling policy (CPU or ALB request
-count per target) — the ASG and Launch Template already support it. Move
-RDS off `db.t3.micro` and consider RDS Proxy as instance count grows.
-
-**Cost.** The single NAT Gateway and single-AZ RDS are the two deliberate
-savings in this build; both flip to production settings via
-`multi_az = true` and a second NAT Gateway per AZ. ECR's lifecycle policy
-already caps stored images at 10.
-
-**High availability.** A second NAT Gateway (one per AZ), RDS Multi-AZ
-failover, and an S3 + DynamoDB remote Terraform backend — so state isn't a
-laptop-only artifact and CI can `apply` safely with locking — are the three
-changes that would matter most before this ran in production.
+- **Blue/green or canary deploys** in place of the current rolling Instance Refresh
+- **ACM certificate + Route 53 domain**, redirecting the ALB's HTTP listener to HTTPS
+- **Frontend CI/CD**: `aws s3 sync` + CloudFront invalidation isn't wired into the pipeline yet — the `frontend` module provisions the infrastructure, but shipping builds to it is still manual
+- **Target-tracking scaling policy** (CPU or ALB request count per target) instead of the current static `min=1 / max=2` sizing
+- **Integration tests** against a real Postgres instance, beyond the current unit tests on the Flask routes
 
 ---
 
 <div align="center">
 
-Built as part of a Cloud/DevOps Engineer take-home assessment.
+Built as part of a Cloud/DevOps Engineer take-home assessment · Terraform · Docker · GitHub Actions
 
 </div>
