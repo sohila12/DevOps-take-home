@@ -31,7 +31,7 @@ data "aws_ami" "al2023" {
 # ---------------------------------------------------------------------------
 resource "aws_security_group" "alb" {
   name_prefix = "${local.name_prefix}-alb-"
-  description = "ALB — HTTP/HTTPS from the internet"
+  description = "ALB - HTTP/HTTPS from the internet"
   vpc_id      = var.vpc_id
   tags        = merge(var.tags, { Name = "${local.name_prefix}-alb-sg" })
 
@@ -72,7 +72,7 @@ resource "aws_security_group_rule" "alb_egress_all" {
 
 resource "aws_security_group" "ec2" {
   name_prefix = "${local.name_prefix}-ec2-"
-  description = "EC2 app instances — app port from ALB only, no SSH"
+  description = "EC2 app instances - app port from ALB only, no SSH"
   vpc_id      = var.vpc_id
   tags        = merge(var.tags, { Name = "${local.name_prefix}-ec2-sg" })
 
@@ -164,7 +164,7 @@ resource "aws_launch_template" "app" {
 
   metadata_options {
     http_tokens                = "required" # IMDSv2 only
-    http_put_response_hop_limit = 1
+    http_put_response_hop_limit = 2
   }
 
   block_device_mappings {

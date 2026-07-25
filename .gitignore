@@ -1,23 +1,40 @@
 # Terraform
-**/.terraform/*
+**/.terraform/
 *.tfstate
 *.tfstate.*
-*.tfvars
-!*.tfvars.example
 crash.log
 crash.*.log
-.terraform.lock.hcl
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
 
-# Environment / secrets
-.env
-*.pem
-*.key
+# Variable files may contain secrets — ignore them, but keep example files
+# so the repo documents what variables are expected.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# .terraform.lock.hcl is intentionally NOT ignored. Terraform recommends
+# committing it so provider version selection is reproducible across
+# machines and CI runs — do not add it to this file.
 
 # Python
 __pycache__/
-*.pyc
-.venv/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 venv/
+.venv/
+env/
+*.egg-info/
 
-# OS
+# Editors / OS
+.vscode/
+.idea/
 .DS_Store
+Thumbs.db

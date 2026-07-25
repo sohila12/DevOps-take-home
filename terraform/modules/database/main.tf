@@ -3,6 +3,16 @@ locals {
 }
 
 # ---------------------------------------------------------------------------
+# Auto-discover the latest available PostgreSQL engine version if one wasn't
+# pinned via var.engine_version. Avoids hardcoding a specific version number
+# that may not be offered in every region/account, or that ages out over time.
+# ---------------------------------------------------------------------------
+data "aws_rds_engine_version" "postgres" {
+  engine = "postgres"
+  latest = true
+}
+
+# ---------------------------------------------------------------------------
 # DB subnet group — private subnets only, spans both AZs
 # ---------------------------------------------------------------------------
 resource "aws_db_subnet_group" "main" {
@@ -62,7 +72,7 @@ resource "aws_security_group_rule" "rds_egress_all" {
 resource "aws_db_instance" "main" {
   identifier     = "${local.name_prefix}-db"
   engine         = "postgres"
-  engine_version = var.engine_version
+  engine_version = coalesce(var.engine_version, data.aws_rds_engine_version.postgres.version)
   instance_class = var.instance_class
 
   allocated_storage     = var.allocated_storage

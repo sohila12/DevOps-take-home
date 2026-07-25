@@ -48,9 +48,9 @@ variable "allocated_storage" {
 }
 
 variable "engine_version" {
-  description = "PostgreSQL engine version"
+  description = "PostgreSQL engine version. Leave null to auto-select the latest version available in the target region/account (avoids hardcoding a version that may not exist everywhere or may age out)."
   type        = string
-  default     = "16.4"
+  default     = null
 }
 
 variable "multi_az" {
