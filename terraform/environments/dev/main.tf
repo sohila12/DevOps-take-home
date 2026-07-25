@@ -13,7 +13,7 @@ locals {
 # =============================================================================
 resource "aws_ecr_repository" "app" {
   name                 = "${var.project_name}-${var.environment}-app"
-  image_tag_mutability = "IMMUTABLE"
+  image_tag_mutability = "MUTABLE" # the pipeline intentionally overwrites the floating "latest" tag on every push, per the assessment's dual-tagging requirement (latest + Git SHA) -- IMMUTABLE blocks that after the very first push. SHA tags stay unique in practice since each Git commit SHA is only ever pushed once.
 
   image_scanning_configuration {
     scan_on_push = true
